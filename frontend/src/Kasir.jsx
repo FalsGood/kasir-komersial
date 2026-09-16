@@ -6,7 +6,11 @@ export default function Kasir({ user, onLogout }) {
   const [cart, setCart] = useState([]);
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [receiptData, setReceiptData] = useState(null); // State simpan data struk
+  const [receiptData, setReceiptData] = useState(null);
+
+  // State Modal Tambah Produk (Termasuk SKU)
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({ sku: '', name: '', price: '', stock: '' });
 
   useEffect(() => {
     fetchProducts();
@@ -18,6 +22,30 @@ export default function Kasir({ user, onLogout }) {
       setProducts(res.data.data);
     } catch (err) {
       alert('Gagal mengambil data produk');
+    }
+  };
+
+  // Handle Tambah Produk Baru ke Database
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    if (!newProduct.sku || !newProduct.name || !newProduct.price || !newProduct.stock) {
+      return alert('Semua field wajib diisi!');
+    }
+
+    try {
+      await axios.post('http://localhost:5000/api/products', {
+        sku: newProduct.sku,
+        name: newProduct.name,
+        price: Number(newProduct.price),
+        stock: Number(newProduct.stock),
+      });
+
+      alert('Produk berhasil ditambahkan!');
+      setShowAddModal(false);
+      setNewProduct({ sku: '', name: '', price: '', stock: '' });
+      fetchProducts(); // Refresh katalog produk
+    } catch (err) {
+      alert(err.response?.data?.message || 'Gagal menambahkan produk');
     }
   };
 
@@ -63,7 +91,6 @@ export default function Kasir({ user, onLogout }) {
 
       const res = await axios.post('http://localhost:5000/api/transactions', payload);
       
-      // Simpan rincian untuk struk sebelum keranjang di-reset
       setReceiptData({
         receipt_number: res.data.data.receipt_number,
         items: [...cart],
@@ -105,7 +132,17 @@ export default function Kasir({ user, onLogout }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* KATALOG PRODUK */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-bold text-slate-700">Katalog Produk</h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-bold text-slate-700">Katalog Produk</h2>
+            
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+            >
+              + Tambah Produk Baru
+            </button>
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {products.map((p) => (
               <div
@@ -188,6 +225,76 @@ export default function Kasir({ user, onLogout }) {
           </div>
         </div>
       </div>
+
+      {/* MODAL POPUP TAMBAH PRODUK BARU */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-lg font-bold text-slate-800 border-b pb-2">Tambah Produk Baru</h3>
+            <form onSubmit={handleAddProduct} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Kode SKU / Barcode</label>
+                <input
+                  type="text"
+                  value={newProduct.sku}
+                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
+                  placeholder="Contoh: BRG-001"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Nama Produk</label>
+                <input
+                  type="text"
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                  placeholder="Contoh: Kopi Susu"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Harga (Rp)</label>
+                <input
+                  type="number"
+                  value={newProduct.price}
+                  onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
+                  placeholder="15000"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Jumlah Stok</label>
+                <input
+                  type="number"
+                  value={newProduct.stock}
+                  onChange={(e) => setNewProduct({ ...newProduct, stock: e.target.value })}
+                  placeholder="50"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+              <div className="flex gap-2 pt-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Simpan Produk
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 bg-slate-200 text-slate-700 text-sm font-semibold py-2 rounded-lg hover:bg-slate-300"
+                >
+                  Batal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL POPUP STRUK BELANJA */}
       {receiptData && (
