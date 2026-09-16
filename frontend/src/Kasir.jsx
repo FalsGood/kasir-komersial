@@ -6,8 +6,8 @@ export default function Kasir({ user, onLogout }) {
   const [cart, setCart] = useState([]);
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [receiptData, setReceiptData] = useState(null); // State simpan data struk
 
-  // Load produk dari Backend
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -21,18 +21,13 @@ export default function Kasir({ user, onLogout }) {
     }
   };
 
-  // Tambah barang ke keranjang
   const addToCart = (product) => {
     const existing = cart.find((item) => item.product_id === product.id);
     if (existing) {
-      if (existing.quantity >= product.stock) {
-        return alert('Stok produk tidak mencukupi!');
-      }
+      if (existing.quantity >= product.stock) return alert('Stok produk tidak mencukupi!');
       setCart(
         cart.map((item) =>
-          item.product_id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+          item.product_id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         )
       );
     } else {
@@ -49,21 +44,15 @@ export default function Kasir({ user, onLogout }) {
     }
   };
 
-  // Hitung total belanjaan
-  const totalAmount = cart.reduce(
-    (acc, item) => acc + item.price * item.quantity,
-    0
-  );
+  const totalAmount = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  // Handle Checkout
   const handleCheckout = async () => {
     if (cart.length === 0) return alert('Keranjang masih kosong!');
-    if (Number(paidAmount) < totalAmount)
-      return alert('Uang pembayaran kurang!');
+    if (Number(paidAmount) < totalAmount) return alert('Uang pembayaran kurang!');
 
     try {
       const payload = {
-        user_id: user?.id || 1, // Otomatis ambil ID dari user yang sedang login
+        user_id: user?.id || 1,
         payment_method: paymentMethod,
         paid_amount: Number(paidAmount),
         items: cart.map((item) => ({
@@ -72,13 +61,20 @@ export default function Kasir({ user, onLogout }) {
         })),
       };
 
-      const res = await axios.post(
-        'http://localhost:5000/api/transactions',
-        payload
-      );
-      alert(`Transaksi Berhasil! Kembalian: Rp ${res.data.data.change_amount}`);
+      const res = await axios.post('http://localhost:5000/api/transactions', payload);
+      
+      // Simpan rincian untuk struk sebelum keranjang di-reset
+      setReceiptData({
+        receipt_number: res.data.data.receipt_number,
+        items: [...cart],
+        total_amount: totalAmount,
+        paid_amount: Number(paidAmount),
+        change_amount: res.data.data.change_amount,
+        payment_method: paymentMethod,
+        date: new Date().toLocaleString('id-ID'),
+        kasir: user?.username || 'Kasir',
+      });
 
-      // Reset Form & Reload Produk
       setCart([]);
       setPaidAmount('');
       fetchProducts();
@@ -88,136 +84,165 @@ export default function Kasir({ user, onLogout }) {
   };
 
   return (
-    <div style={{ padding: '20px' }}>
-      {/* BAR HEADER USER & LOGOUT */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          padding: '12px 20px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          border: '1px solid #e9ecef',
-        }}
-      >
-        <span>
-          Kasir Bertugas: <strong>{user?.username || 'Kasir'}</strong> (
-          {user?.role || 'kasir'})
-        </span>
+    <div className="min-h-screen bg-slate-100 p-6 font-sans">
+      {/* NAVBAR HEADER */}
+      <header className="mb-6 flex items-center justify-between rounded-xl bg-white p-4 shadow-sm border border-slate-200">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">POS System</h1>
+          <p className="text-xs text-slate-500">
+            Kasir Bertugas: <span className="font-semibold text-slate-700">{user?.username}</span> ({user?.role})
+          </p>
+        </div>
         <button
           onClick={onLogout}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
+          className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition"
         >
           Logout
         </button>
-      </div>
+      </header>
 
-      <div style={{ display: 'flex', gap: '20px' }}>
-        {/* SISI KIRI: KATALOG PRODUK */}
-        <div style={{ flex: 2 }}>
-          <h2>Katalog Produk</h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '10px',
-            }}
-          >
+      {/* MAIN CONTENT */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* KATALOG PRODUK */}
+        <div className="lg:col-span-2 space-y-4">
+          <h2 className="text-lg font-bold text-slate-700">Katalog Produk</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {products.map((p) => (
               <div
                 key={p.id}
                 onClick={() => addToCart(p)}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: '10px',
-                  cursor: 'pointer',
-                  borderRadius: '8px',
-                }}
+                className="group flex flex-col justify-between rounded-xl bg-white p-4 shadow-sm border border-slate-200 cursor-pointer hover:border-blue-500 transition"
               >
-                <h4>{p.name}</h4>
-                <p>Rp {p.price.toLocaleString()}</p>
-                <small>Stok: {p.stock}</small>
+                <div>
+                  <h3 className="font-semibold text-slate-800 group-hover:text-blue-600">{p.name}</h3>
+                  <p className="mt-1 text-sm font-bold text-slate-600">Rp {p.price.toLocaleString()}</p>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${p.stock > 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    Stok: {p.stock}
+                  </span>
+                  <span className="text-xs text-blue-500 font-medium">+ Tambah</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* SISI KANAN: KERANJANG & BAYAR */}
-        <div
-          style={{
-            flex: 1,
-            borderLeft: '2px solid #ddd',
-            paddingLeft: '20px',
-          }}
-        >
-          <h2>Keranjang Belanja</h2>
-          {cart.map((item) => (
-            <div
-              key={item.product_id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: '10px',
-              }}
-            >
-              <span>
-                {item.name} (x{item.quantity})
-              </span>
-              <span>Rp {(item.price * item.quantity).toLocaleString()}</span>
+        {/* KERANJANG */}
+        <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-200 flex flex-col justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-700 border-b pb-3 mb-4">Keranjang Belanja</h2>
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+              {cart.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">Keranjang masih kosong</p>
+              ) : (
+                cart.map((item) => (
+                  <div key={item.product_id} className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
+                    <div>
+                      <p className="font-medium text-slate-800">{item.name}</p>
+                      <p className="text-xs text-slate-400">x{item.quantity} @ Rp {item.price.toLocaleString()}</p>
+                    </div>
+                    <span className="font-semibold text-slate-700">Rp {(item.price * item.quantity).toLocaleString()}</span>
+                  </div>
+                ))
+              )}
             </div>
-          ))}
+          </div>
 
-          <hr />
-          <h3>Total: Rp {totalAmount.toLocaleString()}</h3>
+          <div className="mt-6 border-t border-slate-200 pt-4 space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-slate-500">Total Bayar</span>
+              <span className="text-xl font-extrabold text-blue-600">Rp {totalAmount.toLocaleString()}</span>
+            </div>
 
-          <div style={{ marginTop: '15px' }}>
-            <label>Metode Pembayaran: </label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600">Metode Pembayaran</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm bg-white"
+              >
+                <option value="cash">Tunai (Cash)</option>
+                <option value="qris">QRIS</option>
+                <option value="ewallet">E-Wallet</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600">Nominal Diterima</label>
+              <input
+                type="number"
+                value={paidAmount}
+                onChange={(e) => setPaidAmount(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm"
+              />
+            </div>
+
+            <button
+              onClick={handleCheckout}
+              className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition"
             >
-              <option value="cash">Tunai (Cash)</option>
-              <option value="qris">QRIS</option>
-              <option value="ewallet">E-Wallet</option>
-            </select>
+              BAYAR SEKARANG
+            </button>
           </div>
-
-          <div style={{ marginTop: '10px' }}>
-            <label>Uang Diterima: </label>
-            <input
-              type="number"
-              value={paidAmount}
-              onChange={(e) => setPaidAmount(e.target.value)}
-              placeholder="Masukkan nominal"
-            />
-          </div>
-
-          <button
-            onClick={handleCheckout}
-            style={{
-              marginTop: '20px',
-              width: '100%',
-              padding: '10px',
-              backgroundColor: 'green',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-            }}
-          >
-            BAYAR SEKARANG
-          </button>
         </div>
       </div>
+
+      {/* MODAL POPUP STRUK BELANJA */}
+      {receiptData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl space-y-4 font-mono text-xs">
+            <div className="text-center border-b pb-3">
+              <h2 className="text-base font-bold text-slate-800 uppercase">Toko Kelontong Komersial</h2>
+              <p className="text-slate-500">No: {receiptData.receipt_number}</p>
+              <p className="text-slate-500">{receiptData.date}</p>
+              <p className="text-slate-500">Kasir: {receiptData.kasir}</p>
+            </div>
+
+            <div className="space-y-2 border-b pb-3">
+              {receiptData.items.map((item) => (
+                <div key={item.product_id} className="flex justify-between">
+                  <span>{item.name} x{item.quantity}</span>
+                  <span>Rp {(item.price * item.quantity).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-1 border-b pb-3">
+              <div className="flex justify-between font-bold text-slate-800">
+                <span>TOTAL</span>
+                <span>Rp {receiptData.total_amount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>BAYAR ({receiptData.payment_method.toUpperCase()})</span>
+                <span>Rp {receiptData.paid_amount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>KEMBALI</span>
+                <span>Rp {receiptData.change_amount.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p className="text-center text-slate-400">--- Terima Kasih ---</p>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 bg-emerald-600 text-white font-sans font-semibold py-2 rounded-lg hover:bg-emerald-700"
+              >
+                Cetak Struk
+              </button>
+              <button
+                onClick={() => setReceiptData(null)}
+                className="flex-1 bg-slate-200 text-slate-700 font-sans font-semibold py-2 rounded-lg hover:bg-slate-300"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

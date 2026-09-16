@@ -251,3 +251,31 @@ app.post('/api/transactions', async (req, res) => {
         });
     }
 });
+// ==========================================
+// API GET RIWAYAT TRANSAKSI
+// ==========================================
+app.get('/api/transactions', async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT 
+                t.id, 
+                t.receipt_number, 
+                t.total_amount, 
+                t.paid_amount, 
+                t.change_amount, 
+                t.payment_method, 
+                t.created_at, 
+                u.username AS kasir_name
+            FROM transactions t
+            JOIN users u ON t.user_id = u.id
+            ORDER BY t.created_at DESC
+        `);
+
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
