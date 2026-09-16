@@ -98,46 +98,42 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// 2. LOGIN - Validasi masuk aplikasi
-app.post('/api/login', async (req, res) => {
+// Pastikan import mysql pakai /promise di paling atas file backend
+// const mysql = require('mysql2/promise');
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
     const { username, password } = req.body;
-    
-    try {
-        // Cari user di database
-        const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
-        if (users.length === 0) {
-            return res.status(401).json({ success: false, message: 'Username tidak ditemukan!' });
-        }
-        
-        const user = users[0];
-        
-        // Cocokkan password yang diketik dengan yang ada di database
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Password salah!' });
-        }
-        
-        // Buat Token JWT (berlaku 1 hari)
-        const token = jwt.sign(
-            { id: user.id, role: user.role }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: '1d' }
-        );
-        
-        // Kirim respon sukses ke frontend
-        res.json({
-            success: true,
-            message: 'Login berhasil!',
-            token: token,
-            user: {
-                username: user.username,
-                role: user.role
-            }
-        });
-        
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+
+    // 1. Cek User
+    const [rows] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    if (rows.length === 0) {
+      return res.status(401).json({ message: 'Username tidak ditemukan' });
     }
+
+    const user = rows[0];
+
+    // 2. Cek Password (jika pakai bcrypt)
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Password salah' });
+    }
+
+    // 3. Return response sukses
+    return res.json({
+      message: 'Login berhasil',
+      data: {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      }
+    });
+
+  } catch (err) {
+    console.error('Error Login:', err);
+    // Wajib ada respon di catch biar frontend gak hanging!
+    return res.status(500).json({ message: 'Terjadi kesalahan pada server' });
+  }
 });
 
 // ==========================================
