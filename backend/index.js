@@ -147,3 +147,107 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`✅ Server backend jalan di http://localhost:${PORT}`);
 });
+// ==========================================
+// API TRANSACTION CHECKOUT (CORE POS)
+// ==========================================
+app.post('/api/transactions', async (req, res) => {
+    const { user_id, payment_method, paid_amount, items } = req.body; 
+    // items formatnya nanti: [{ product_id: 1, quantity: 2 }, ...]
+
+    // Buka koneksi khusus untuk transaksi (berbasis pool connection)
+    const connection = await db.getConnection();
+
+    try {
+        // 1. Mulai MySQL Transaction (ACID)
+        await connection.beginTransaction();
+
+        let total_amount = 0;
+        const processedItems = [];
+
+        // 2. Validasi stok dan hitung total harga
+        for (let item of items) {
+            const [rows] = await connection.query(
+                'SELECT id, price, stock FROM products WHERE id = ? FOR UPDATE', 
+                [item.product_id]
+            );
+
+            if (rows.length === 0) {
+                throw new Error(`Produk dengan ID ${item.product_id} tidak ditemukan!`);
+            }
+
+            const product = rows[0];
+
+            if (product.stock < item.quantity) {
+                throw new Error(`Stok tidak cukup untuk produk ID ${item.product_id}. Sisa stok: ${product.stock}`);
+            }
+
+            const subtotal = product.price * item.quantity;
+            total_amount += subtotal;
+
+            processedItems.push({
+                product_id: product.id,
+                quantity: item.quantity,
+                price_at_transaction: product.price,
+                subtotal: subtotal
+            });
+        }
+
+        // 3. Validasi nominal bayar pelanggan
+        if (paid_amount < total_amount) {
+            throw new Error('Uang yang dibayarkan kurang dari total belanja!');
+        }
+
+        const change_amount = paid_amount - total_amount;
+        const receipt_number = 'TRX-' + Date.now(); // Bikin nomor struk unik berdasarkan waktu
+
+        // 4. Masukkan data ke tabel header (transactions)
+        const [trxResult] = await connection.query(
+            `INSERT INTO transactions (receipt_number, user_id, total_amount, payment_method, paid_amount, change_amount) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [receipt_number, user_id, total_amount, payment_method, paid_amount, change_amount]
+        );
+
+        const transaction_id = trxResult.insertId;
+
+        // 5. Masukkan detail barang & kurangi stok produk satu per satu
+        for (let item of processedItems) {
+            // Masukkan ke transaction_details
+            await connection.query(
+                `INSERT INTO transaction_details (transaction_id, product_id, quantity, price_at_transaction, subtotal) 
+                 VALUES (?, ?, ?, ?, ?)`,
+                [transaction_id, item.product_id, item.quantity, item.price_at_transaction, item.subtotal]
+            );
+
+            // Potong stok produk di tabel products
+            await connection.query(
+                `UPDATE products SET stock = stock - ? WHERE id = ?`,
+                [item.quantity, item.product_id]
+            );
+        }
+
+        // 6. Kalau semua aman, commit transaksi permanen ke database!
+        await connection.commit();
+        connection.release();
+
+        res.status(201).json({
+            success: true,
+            message: 'Transaksi berhasil!',
+            data: {
+                receipt_number,
+                total_amount,
+                paid_amount,
+                change_amount
+            }
+        });
+
+    } catch (error) {
+        // Kalau ada error di tengah jalan, batalkan semua perubahan database!
+        await connection.rollback();
+        connection.release();
+
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
